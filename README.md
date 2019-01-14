@@ -1,4 +1,4 @@
-# pysif
+# PySIF
 **Py**thon **S**olver for **I**ncompressible **F**luid-dynamics
 
 Author: Jia Cheng Hu (jia.cheng.hu@uwaterloo.ca)
