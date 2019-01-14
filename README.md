@@ -1,2 +1,2 @@
 # pysif
-Python solver for incompressible fluid dynamics
+**Py**thon **S**olver for **I**ncompressible **F**luid-dynamics
