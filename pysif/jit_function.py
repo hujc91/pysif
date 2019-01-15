@@ -1,5 +1,6 @@
 '''Numba Just-In-Time compiled functions for optimal performance
 '''
+import numpy as np
 from numba import jit
 
 @jit(nopython=True, parallel=True)
