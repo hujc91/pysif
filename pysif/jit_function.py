@@ -15,6 +15,19 @@ def apply_dealiasing(Us_out, Us_in, d0, d1, d2):
                 Us_out[1,i,j,k] = d*Us_in[1,i,j,k]
                 Us_out[2,i,j,k] = d*Us_in[2,i,j,k]
 
+
+@jit(nopython=True, parallel=True)
+def apply_dealiasing_self(Us, d0, d1, d2):
+    '''Apply dealiasing to velocity field
+    '''
+    for i in range(len(d0)):
+        for j in range(len(d1)):
+            for k in range(len(d2)):
+                d = d0[i]*d1[j]*d2[k]
+                Us[0,i,j,k] = d*Us[0,i,j,k]
+                Us[1,i,j,k] = d*Us[1,i,j,k]
+                Us[2,i,j,k] = d*Us[2,i,j,k]
+
 @jit(nopython=True, parallel=True)
 def curl(Rs, k0, k1, k2):
     '''Obtain the vorticity field from the velocity field in spectral domain
@@ -63,6 +76,7 @@ def cross(R1p, R2p):
 def get_RHS(R2s, Cs, k0, k1, k2, nu):
     '''Obtain right hand side of the Navier-Stokes momentum equation
     '''
+    K2 = 0.
     K2_temp = 0.
 
     # Loop though every array entry
@@ -123,8 +137,25 @@ def rk_update_R2s(R2s, R1s, coeff):
                 R2s[1,i,j,k] = R1s[1,i,j,k] + coeff*R2s[1,i,j,k]
                 R2s[2,i,j,k] = R1s[2,i,j,k] + coeff*R2s[2,i,j,k]
 
+# --------------------------------------------------------------------------------------
+# Post-processing functions
+# --------------------------------------------------------------------------------------
 @jit(nopython=True, parallel=True)
-def curl_post(R3s, R1s, k0, k1, k2):
+def apply_filter(Rs, k0, k1, k2, factor):
+    d0 = np.exp(-36*(factor*np.abs(k0)/k0.max())**36)
+    d1 = np.exp(-36*(factor*np.abs(k1)/k1.max())**36)
+    d2 = np.exp(-36*(factor*np.abs(k2)/k2.max())**36)
+
+    for i in range(len(d0)):
+        for j in range(len(d1)):
+            for k in range(len(d2)):
+                d = d0[i]*d1[j]*d2[k]
+                Rs[0,i,j,k] = d*Rs[0,i,j,k]
+                Rs[1,i,j,k] = d*Rs[1,i,j,k]
+                Rs[2,i,j,k] = d*Rs[2,i,j,k]
+
+@jit(nopython=True, parallel=True)
+def curl_post(Ws, Us, k0, k1, k2):
     '''Obtain the vorticity field from the velocity field in spectral domain
     '''
     # Loop though every array entry
@@ -136,14 +167,14 @@ def curl_post(R3s, R1s, k0, k1, k2):
                 K0 = k0[i]
                 K1 = k1[j]
                 K2 = k2[k]
-                U0 = R1s[0,i,j,k]
-                U1 = R1s[1,i,j,k]
-                U2 = R1s[2,i,j,k]
+                U0 = Us[0,i,j,k]
+                U1 = Us[1,i,j,k]
+                U2 = Us[2,i,j,k]
 
                 # Perform curl operation
-                R3s[0,i,j,k] = 1j*(K1*U2-K2*U1)
-                R3s[1,i,j,k] = 1j*(K2*U0-K0*U2)
-                R3s[2,i,j,k] = 1j*(K0*U1-K1*U0)
+                Ws[0,i,j,k] = 1j*(K1*U2-K2*U1)
+                Ws[1,i,j,k] = 1j*(K2*U0-K0*U2)
+                Ws[2,i,j,k] = 1j*(K0*U1-K1*U0)
 
 @jit(nopython=True, parallel=True)
 def get_total_enstrophy(Wp, dV):
@@ -166,3 +197,32 @@ def get_total_enstrophy(Wp, dV):
     ens = 0.5*dV*ens
     
     return ens
+
+@jit(nopython=True, parallel=True)
+def get_magnitude(Vm, Vp):
+    '''Get magnitude of a vector field
+    '''
+    for i in range(Vp.shape[1]):
+        for j in range(Vp.shape[2]):
+            for k in range(Vp.shape[3]):
+                Vm[i,j,k] = np.sqrt(Vp[0,i,j,k]**2 + Vp[1,i,j,k]**2 + Vp[2,i,j,k]**2)
+
+@jit(nopython=True, parallel=True)
+def solve_poisson(Rs, k0, k1, k2):
+    '''Solve Poisson equation
+    '''
+    K2 = 0.
+
+    # Loop though every array entry
+    for i in range(len(k0)):
+        for j in range(len(k1)):
+            for k in range(len(k2)):
+                
+                # Compute spectral operators
+                K2 = k0[i]**2 + k1[j]**2 + k2[k]**2
+
+                if K2 == 0: K2 = 1.
+                
+                Rs[0,i,j,k] = Rs[0,i,j,k]/K2
+                Rs[1,i,j,k] = Rs[1,i,j,k]/K2
+                Rs[2,i,j,k] = Rs[2,i,j,k]/K2
